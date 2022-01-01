@@ -1,11 +1,18 @@
 import os
+import re
 import subprocess
 from pathlib import Path
 
 import srsly
 from glom import glom, Coalesce
 
-from .utils import dag_templating, pipe_templating, get_image
+from .utils import (
+    bump_tag,
+    dag_templating,
+    pipe_templating,
+    get_image,
+    get_repo
+)
 
 HOME = os.environ.get('HOME')
 
@@ -19,15 +26,23 @@ class Interface:
     _base: list = ['pachctl']
 
     def _docker_build(self, directory: Path):
+        env = {**os.environ}
         if self._active_context == 'local':
-            subprocess.run('eval $(minikube docker-env)', shell=True)
+            proc = subprocess.run(['minikube', 'docker-env'], capture_output=True)
+            variables = re.findall(r"^export ([A-Z_]+)=\"(.+)\"$", proc.stdout.decode(), re.MULTILINE)
 
+            env = {
+                **env,
+                **{key: val for key, val in variables}
+            }
+
+        bump_tag(directory)
         image = get_image(directory)
-        subprocess.run(['docker', 'build', '-t', image, directory], check=True)
+        subprocess.run(['docker', 'build', '-t', image, directory], check=True, env=env)
 
         if self._active_context != 'local':
             # remote registry
-            pass
+            subprocess.run(['docker', 'push', image], check=True, env=env)
 
     def pipe(self, name=None, description=None, repo=None, image=None):
         if name is None:
@@ -37,13 +52,14 @@ class Interface:
             dirname = Path(name)
             if dirname.exists():
                 out = subprocess.run([*self._base, 'list', 'pipeline'], capture_output=True)
-                if name in out:
+                if name.encode() in out.stdout:
                     # update pipeline branch
                     pass
 
                 else:
                     # create pipeline branch
-                    subprocess.run([*self._base, 'create', 'pipeline', '-f', dirname / 'manifest.yml'])
+                    self._docker_build(dirname.absolute().parent)
+                    subprocess.run([*self._base, 'create', 'pipeline', '-f', dirname / 'manifest.yml'], check=True)
 
             else:
                 # generate pipeline template branch
@@ -52,16 +68,19 @@ class Interface:
                 transform = f'{name}/transform.py'
                 params = {
                     'name': name,
-                    'description': f'\n{description}\n' if description else '',
-                    'repo': repo if repo else '<insert repo>',
-                    'image': image if image else get_image(dirname.parent),
+                    'description': description,
+                    'repo': get_repo(repo),
+                    'image': image if image else get_image(dirname.absolute().parent),
                     'cmd': transform
                 }
                 for template in pipe_templating:
                     template(dirname, **params)
 
                 with (dirname.parent / 'Dockerfile').open(mode='a') as file:
-                    file.write(f'COPY {transform} {name}/')
+                    file.write(f'\nCOPY {transform} {name}/')
+
+                with (dirname.parent / '.dockerignore').open(mode='a') as file:
+                    file.write(f'\n!{transform}')
 
     def repo(self, name=None):
         if name is None:

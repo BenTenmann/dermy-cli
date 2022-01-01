@@ -1,8 +1,12 @@
+import re
 from pathlib import Path
 
+import srsly
+
 __all__ = [
-    'bump_version',
+    'bump_tag',
     'get_image',
+    'get_repo',
     'dag_templating',
     'pipe_templating',
 ]
@@ -16,25 +20,10 @@ RUN pip install -r requirements.txt
 """
 
 IGNORE_TEMPLATE = """**
-!**/*.py
+!requirements.txt
 """
 
 TAG_TEMPLATE = """0.0.0"""
-
-MANIFEST_TEMPLATE = """---
-pipeline:
-  name: {name}{description}
-input:
-  pfs:
-    repo: {repo}
-    glob: /*
-    name: data
-transform:
-  image: {image}
-  cmd:
-    - python3
-    - {cmd}
-"""
 
 TRANSFORM_TEMPLATE = """import logging
 import os
@@ -57,12 +46,17 @@ def main():
     input_path = Path(INPUT)
     output_path = Path(OUTPUT)
     
-    logging.debug(f'input path: {input_path}')
-    logging.debug(f'output path: {output_path}')
+    logging.debug(f'input path: {{input_path}}')
+    logging.debug(f'output path: {{output_path}}')
     
 
 if __name__ == '__main__':
     main()"""
+
+SYMBOLS = {
+    '*': 'cross',
+    '+': 'join'
+}
 
 
 # ----- Helper Functions --------------------------------------------------------------------------------------------- #
@@ -85,11 +79,69 @@ def bump_version(version: str) -> str:
     return out
 
 
+def bump_tag(directory: Path):
+    version = (directory / '.tag').read_text()
+
+    version = bump_version(version)
+    with (directory / '.tag').open(mode='w') as file:
+        file.write(version)
+
+
 def get_image(directory: Path) -> str:
     tag = (directory / '.tag').read_text()
 
     image = f'{directory.name}:{tag}'
     return image
+
+
+def get_repo(repo_expression: str) -> dict or list:
+    if not repo_expression:
+        return format_pfs('<insert repo>', name='data')
+
+    # repo*(repo+repo)
+    subsidiarity = re.findall(r"\((.+)\)", repo_expression)
+
+    n_expr = re.sub(r"\(.+\)", '', repo_expression)
+
+    repos = re.findall(r"[^*+()]+", n_expr)
+    for sub in subsidiarity:
+        repos.append(get_repo(sub))
+
+    symbols = set(re.findall('[*+]', n_expr))
+    if len(symbols) == 0:
+        return format_pfs(repos[0], name='data')
+
+    if len(symbols) > 1:
+        raise ValueError
+
+    symbol, = symbols
+
+    key = SYMBOLS.get(symbol, '*')
+    out = {
+        key: repos
+    }
+    for i, val in enumerate(out[key]):
+        if isinstance(val, dict):
+            continue
+
+        out[key][i] = format_pfs(val, join=(key == 'join'))
+
+    return out
+
+
+def format_pfs(repo: str, name: str = '', join: bool = False):
+    out = {
+        'pfs': {
+            'repo': repo,
+            'glob': '/(*)' if join else '/*'
+        }
+    }
+    if name:
+        out['pfs']['name'] = name
+    if join:
+        out['pfs']['join_on'] = "$1"
+
+    return out
 
 
 def create_template(path: Path, template: str, **kwargs):
@@ -124,7 +176,14 @@ dag_templating = [
 
 # ----- PIPE templating ---------------------------------------------------------------------------------------------- #
 def create_manifest_template(directory: Path, **kwargs):
-    create_template(directory / 'manifest.yml', MANIFEST_TEMPLATE, **kwargs)
+    out = {'pipeline': {'name': kwargs['name']}}
+    if kwargs['description']:
+        out['description'] = kwargs['description']
+
+    out['input'] = kwargs['repo']
+    out['transform'] = {'image': kwargs['image'], 'cmd': ['python3', kwargs['cmd']]}
+
+    srsly.write_yaml(directory / 'manifest.yml', out)
 
 
 def create_transform_template(directory: Path, **kwargs):
