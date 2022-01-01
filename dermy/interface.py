@@ -50,6 +50,43 @@ class Interface:
             # remote registry
             subprocess.run(['docker', 'push', image], check=True, env=env)
 
+    def _create_or_update_pipeline(self, dirname: Path, reprocess: bool):
+        out = subprocess.run([*self._base, 'list', 'pipeline'], capture_output=True)
+
+        self._docker_build(dirname.absolute().parent)
+        bump_manifest_tag(dirname)
+        if dirname.name.encode() in out.stdout:
+            # update pipeline branch
+            cmd = [*self._base, 'update', 'pipeline', '-f', dirname / 'manifest.yml']
+            if reprocess:
+                cmd.append('--reprocess')
+            subprocess.run(cmd, check=True)
+
+        else:
+            # create pipeline branch
+            subprocess.run([*self._base, 'create', 'pipeline', '-f', dirname / 'manifest.yml'], check=True)
+
+    def _generate_pipeline_template(self, dirname: Path, description: str, repo: str, image: str):
+        # generate pipeline template branch
+        dirname.mkdir()
+
+        transform = f'{dirname.name}/transform.py'
+        params = {
+            'name': dirname.name,
+            'description': description,
+            'repo': get_repo(repo),
+            'image': image if image else get_image(dirname.absolute().parent),
+            'cmd': transform
+        }
+        for template in pipe_templating:
+            template(dirname, **params)
+
+        with (dirname.parent / 'Dockerfile').open(mode='a') as file:
+            file.write(f'\nCOPY {transform} {dirname.name}/')
+
+        with (dirname.parent / '.dockerignore').open(mode='a') as file:
+            file.write(f'\n!{transform}')
+
     def pipe(self,
              name: str = None,
              description: str = None,
@@ -62,41 +99,10 @@ class Interface:
         else:
             dirname = Path(name)
             if dirname.exists():
-                out = subprocess.run([*self._base, 'list', 'pipeline'], capture_output=True)
-
-                self._docker_build(dirname.absolute().parent)
-                bump_manifest_tag(dirname)
-                if name.encode() in out.stdout:
-                    # update pipeline branch
-                    cmd = [*self._base, 'update', 'pipeline', '-f', dirname / 'manifest.yml']
-                    if reprocess:
-                        cmd.append('--reprocess')
-                    subprocess.run(cmd, check=True)
-
-                else:
-                    # create pipeline branch
-                    subprocess.run([*self._base, 'create', 'pipeline', '-f', dirname / 'manifest.yml'], check=True)
+                self._create_or_update_pipeline(dirname, reprocess)
 
             else:
-                # generate pipeline template branch
-                dirname.mkdir()
-
-                transform = f'{name}/transform.py'
-                params = {
-                    'name': name,
-                    'description': description,
-                    'repo': get_repo(repo),
-                    'image': image if image else get_image(dirname.absolute().parent),
-                    'cmd': transform
-                }
-                for template in pipe_templating:
-                    template(dirname, **params)
-
-                with (dirname.parent / 'Dockerfile').open(mode='a') as file:
-                    file.write(f'\nCOPY {transform} {name}/')
-
-                with (dirname.parent / '.dockerignore').open(mode='a') as file:
-                    file.write(f'\n!{transform}')
+                self._generate_pipeline_template(dirname, description, repo, image)
 
     def repo(self, name=None):
         if name is None:
