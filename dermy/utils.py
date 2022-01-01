@@ -129,7 +129,7 @@ def get_repo(repo_expression: str) -> dict or list:
 
     symbol, = symbols
 
-    key = SYMBOLS.get(symbol, '*')
+    key = SYMBOLS.get(symbol, 'cross')
     out = {
         key: repos
     }
