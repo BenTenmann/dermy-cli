@@ -5,6 +5,7 @@ import srsly
 
 __all__ = [
     'bump_tag',
+    'bump_manifest_tag',
     'get_image',
     'get_repo',
     'dag_templating',
@@ -85,6 +86,18 @@ def bump_tag(directory: Path):
     version = bump_version(version)
     with (directory / '.tag').open(mode='w') as file:
         file.write(version)
+
+
+def bump_manifest_tag(transform: Path):
+    directory = transform.parent
+
+    version = (directory / '.tag').read_text()
+    manifest = srsly.read_yaml(transform / 'manifest.yml')
+
+    img, *_ = manifest['transform']['image'].split(':')
+    manifest['transform']['image'] = f'{img}:{version}'
+
+    srsly.write_yaml(transform / 'manifest.yml', manifest)
 
 
 def get_image(directory: Path) -> str:
@@ -182,6 +195,7 @@ def create_manifest_template(directory: Path, **kwargs):
 
     out['input'] = kwargs['repo']
     out['transform'] = {'image': kwargs['image'], 'cmd': ['python3', kwargs['cmd']]}
+    out['autoscaling'] = True
 
     srsly.write_yaml(directory / 'manifest.yml', out)
 

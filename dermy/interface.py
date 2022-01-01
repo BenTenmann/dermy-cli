@@ -8,6 +8,7 @@ from glom import glom, Coalesce
 
 from .utils import (
     bump_tag,
+    bump_manifest_tag,
     dag_templating,
     pipe_templating,
     get_image,
@@ -24,6 +25,9 @@ class Interface:
     _config: dict = srsly.read_json(_pachyderm)
     _active_context: str = glom(_config, Coalesce('v1.active_context', 'v2.active_context'))
     _base: list = ['pachctl']
+
+    def __init__(self):
+        pass
 
     def _docker_build(self, directory: Path):
         env = {**os.environ}
@@ -59,6 +63,8 @@ class Interface:
                 else:
                     # create pipeline branch
                     self._docker_build(dirname.absolute().parent)
+
+                    bump_manifest_tag(dirname)
                     subprocess.run([*self._base, 'create', 'pipeline', '-f', dirname / 'manifest.yml'], check=True)
 
             else:
@@ -101,3 +107,12 @@ class Interface:
 
             for template in dag_templating:
                 template(dirname)
+
+    def log(self, name=None):
+        if name is None:
+            raise ValueError('no name provided')
+
+        subprocess.run([*self._base, 'logs', f'--pipeline={name}'])
+
+    def __call__(self):
+        subprocess.run([*self._base, 'shell'])
