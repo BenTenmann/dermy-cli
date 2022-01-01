@@ -18,6 +18,7 @@ setup(
     install_requires=[
         'fire>=0.4.0',
         'glom>=20.0.0,<21.0.0',
+        'pipreqs>=0.4.0',
         'srsly>=2.0.0,<3.0.0',
     ],
     packages=find_packages(exclude=['tests', 'scripts']),

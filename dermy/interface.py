@@ -40,6 +40,8 @@ class Interface:
                 **{key: val for key, val in variables}
             }
 
+        subprocess.run(['pipreqs', '--force', directory], check=True)
+
         bump_tag(directory)
         image = get_image(directory)
         subprocess.run(['docker', 'build', '-t', image, directory], check=True, env=env)
@@ -48,7 +50,12 @@ class Interface:
             # remote registry
             subprocess.run(['docker', 'push', image], check=True, env=env)
 
-    def pipe(self, name=None, description=None, repo=None, image=None):
+    def pipe(self,
+             name: str = None,
+             description: str = None,
+             repo: str = None,
+             image: str = None,
+             reprocess: bool = True):
         if name is None:
             subprocess.run([*self._base, 'list', 'pipeline'])
 
@@ -56,15 +63,18 @@ class Interface:
             dirname = Path(name)
             if dirname.exists():
                 out = subprocess.run([*self._base, 'list', 'pipeline'], capture_output=True)
+
+                self._docker_build(dirname.absolute().parent)
+                bump_manifest_tag(dirname)
                 if name.encode() in out.stdout:
                     # update pipeline branch
-                    pass
+                    cmd = [*self._base, 'update', 'pipeline', '-f', dirname / 'manifest.yml']
+                    if reprocess:
+                        cmd.append('--reprocess')
+                    subprocess.run(cmd, check=True)
 
                 else:
                     # create pipeline branch
-                    self._docker_build(dirname.absolute().parent)
-
-                    bump_manifest_tag(dirname)
                     subprocess.run([*self._base, 'create', 'pipeline', '-f', dirname / 'manifest.yml'], check=True)
 
             else:
@@ -114,5 +124,13 @@ class Interface:
 
         subprocess.run([*self._base, 'logs', f'--pipeline={name}'])
 
-    def __call__(self):
-        subprocess.run([*self._base, 'shell'])
+    def view(self, dag: str):
+        pass
+
+    def __call__(self, cmd=None):
+        if cmd is None:
+            subprocess.run([*self._base, 'shell'])
+
+        else:
+            prc = ' '.join((*self._base, cmd))
+            subprocess.run(prc, shell=True, check=True)
