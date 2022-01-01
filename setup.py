@@ -16,6 +16,7 @@ setup(
     license='MIT',
     python_requires='>=3.7,<3.10',
     install_requires=[
+        'fire>=0.4.0',
         'glom>=20.0.0,<21.0.0',
         'srsly>=2.0.0,<3.0.0',
     ],
