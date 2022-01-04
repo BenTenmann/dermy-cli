@@ -48,7 +48,7 @@ class Interface:
                 **{key: val for key, val in variables}
             }
 
-        subprocess.run(f'${{PYPATH}}/pipreqs --force {directory}', check=True)
+        subprocess.run(f'${{PYPATH}}/pipreqs --force {directory}', check=True, shell=True)
 
         bump_tag(directory)
         image = get_image(directory)
