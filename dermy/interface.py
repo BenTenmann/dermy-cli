@@ -31,7 +31,7 @@ class Interface:
 
     def _docker_build(self, directory: Path):
         env = {**os.environ}
-        if self._active_context == 'local':
+        if self._active_context.startswith('local'):
             proc = subprocess.run(['minikube', 'docker-env'], capture_output=True)
             variables = re.findall(r"^export ([A-Z_]+)=\"(.+)\"$", proc.stdout.decode(), re.MULTILINE)
 
@@ -46,7 +46,7 @@ class Interface:
         image = get_image(directory)
         subprocess.run(['docker', 'build', '-t', image, directory], check=True, env=env)
 
-        if self._active_context != 'local':
+        if not self._active_context.startswith('local'):
             # remote registry
             subprocess.run(['docker', 'push', image], check=True, env=env)
 
