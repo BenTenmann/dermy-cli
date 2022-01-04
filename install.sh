@@ -36,6 +36,8 @@ PYPATH="${DERMY}/venv/bin"
 WRAPPER="#!/bin/bash
 
 PYPATH=${PYPATH}
+
+export PYPATH=\${PYPATH}
 \${PYPATH}/python3 -m dermy \"\$@\"
 "
 
