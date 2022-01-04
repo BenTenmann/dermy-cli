@@ -44,6 +44,13 @@ echo "${WRAPPER}" > "${SCRIPT}"
 
 chmod +x "${SCRIPT}"
 
+CONFIG="{
+  \"docker_registry\": {
+    \"remote\": \"$1\"
+  }
+}"
+echo -e "${CONFIG}" > "${DERMY}/config.json"
+
 ALIAS="alias dermy=~/.dermy/wrapper.sh"
 IS_PRESENT=$(grep "${ALIAS}" "${HOME}/.zshrc")
 if [[ ! ${IS_PRESENT} ]]

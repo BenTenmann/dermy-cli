@@ -26,12 +26,20 @@ class Interface:
     _active_context: str = glom(_config, Coalesce('v1.active_context', 'v2.active_context'))
     _base: list = ['pachctl']
 
+    _dermy: Path = Path(HOME) / '.dermy/config.json'
+    assert _dermy.exists()
+
+    _dermy_config: dict = srsly.read_json(_dermy)
+    _remote_registry: str = glom(_dermy_config, 'docker_registry.remote')
+
     def __init__(self):
         pass
 
     def _docker_build(self, directory: Path):
         env = {**os.environ}
-        if self._active_context.startswith('local'):
+
+        remote = not self._active_context.startswith('local')
+        if not remote:
             proc = subprocess.run(['minikube', 'docker-env'], capture_output=True)
             variables = re.findall(r"^export ([A-Z_]+)=\"(.+)\"$", proc.stdout.decode(), re.MULTILINE)
 
@@ -44,9 +52,12 @@ class Interface:
 
         bump_tag(directory)
         image = get_image(directory)
+        if remote:
+            image = f'{self._remote_registry}/{image}'
+
         subprocess.run(['docker', 'build', '-t', image, directory], check=True, env=env)
 
-        if not self._active_context.startswith('local'):
+        if remote:
             # remote registry
             subprocess.run(['docker', 'push', image], check=True, env=env)
 
