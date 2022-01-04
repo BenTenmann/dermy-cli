@@ -100,10 +100,10 @@ def bump_manifest_tag(transform: Path):
     srsly.write_yaml(transform / 'manifest.yml', manifest)
 
 
-def get_image(directory: Path) -> str:
+def get_image(directory: Path, registry: str) -> str:
     tag = (directory / '.tag').read_text()
 
-    image = f'{directory.name}:{tag}'
+    image = f'{registry}{directory.name}:{tag}'
     return image
 
 

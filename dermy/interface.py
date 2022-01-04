@@ -26,11 +26,13 @@ class Interface:
     _active_context: str = glom(_config, Coalesce('v1.active_context', 'v2.active_context'))
     _base: list = ['pachctl']
 
+    _remote: bool = not _active_context.startswith('local')
+
     _dermy: Path = Path(HOME) / '.dermy/config.json'
     assert _dermy.exists()
 
     _dermy_config: dict = srsly.read_json(_dermy)
-    _remote_registry: str = glom(_dermy_config, 'docker_registry.remote')
+    _remote_registry: str = f'{glom(_dermy_config, "docker_registry.remote")}/' if _remote else ''
 
     def __init__(self):
         pass
@@ -38,8 +40,7 @@ class Interface:
     def _docker_build(self, directory: Path):
         env = {**os.environ}
 
-        remote = not self._active_context.startswith('local')
-        if not remote:
+        if not self._remote:
             proc = subprocess.run(['minikube', 'docker-env'], capture_output=True)
             variables = re.findall(r"^export ([A-Z_]+)=\"(.+)\"$", proc.stdout.decode(), re.MULTILINE)
 
@@ -51,13 +52,10 @@ class Interface:
         subprocess.run(f'${{PYPATH}}/pipreqs --force {directory}', check=True, shell=True)
 
         bump_tag(directory)
-        image = get_image(directory)
-        if remote:
-            image = f'{self._remote_registry}/{image}'
-
+        image = get_image(directory, self._remote_registry)
         subprocess.run(['docker', 'build', '-t', image, directory], check=True, env=env)
 
-        if remote:
+        if self._remote:
             # remote registry
             subprocess.run(['docker', 'push', image], check=True, env=env)
 
@@ -86,7 +84,7 @@ class Interface:
             'name': dirname.name,
             'description': description,
             'repo': get_repo(repo),
-            'image': image if image else get_image(dirname.absolute().parent),
+            'image': image if image else get_image(dirname.absolute().parent, self._remote_registry),
             'cmd': transform
         }
         for template in pipe_templating:
