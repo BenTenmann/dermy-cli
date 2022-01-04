@@ -133,6 +133,25 @@ class Interface:
     def view(self, dag: str):
         pass
 
+    def tap(self, name: str = None, file: str = None, branch: str = None):
+        if name is None:
+            raise ValueError('no name provided')
+
+        dirname = Path(name)
+        if dirname.exists():
+            path = (dirname / '.bucket')
+        else:
+            path = Path('.bucket')
+        path.mkdir(parents=True)
+
+        if branch is None:
+            branch = 'master'
+
+        if file is None:
+            subprocess.run([*self._base, 'get', 'file', '-r', f'{name}@{branch}:/', '-o', path], check=True)
+        else:
+            subprocess.run([*self._base, 'get', 'file', f'{name}@{branch}:/{file}', '-o', path / file], check=True)
+
     def __call__(self, cmd=None):
         if cmd is None:
             subprocess.run([*self._base, 'shell'])
